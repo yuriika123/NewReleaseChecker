@@ -1,26 +1,97 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta name="apple-mobile-web-app-title" content="新譜情報">
+        <meta name="theme-color" content="#6366f1">
         <title>マイアーティスト新譜情報</title>
         <link rel="stylesheet" href="style.css">
         <link rel="manifest" href="manifest.json">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     </head>
     <body>
+        <!-- Spotify認証モーダル -->
+        <div id="spotify-auth-modal" class="modal">
+            <div class="modal-content">
+                <h2>Spotify API認証</h2>
+                <p>アプリを使用するには、Spotify APIのクライアントIDとシークレットが必要です。</p>
+                <div class="form-group">
+                    <label for="client-id-input">Client ID:</label>
+                    <input type="text" id="client-id-input" placeholder="Spotify Client IDを入力してください">
+                </div>
+                <div class="form-group">
+                    <label for="client-secret-input">Client Secret:</label>
+                    <input type="password" id="client-secret-input" placeholder="Spotify Client Secretを入力してください">
+                </div>
+                <div class="modal-buttons">
+                    <button id="save-credentials" class="btn btn-primary">保存して開始</button>
+                </div>
+            </div>
+        </div>
 
-        <h1>マイアーティスト新譜情報</h1>
+        <div class="container">
+            <header class="header">
+                <div class="header-content">
+                    <div class="title-section">
+                        <h1 class="title">
+                            <span class="icon">🎵</span>
+                            マイアーティスト新譜情報
+                        </h1>
+                        <p class="subtitle">お気に入りのアーティストの最新リリースをチェック</p>
+                    </div>
+                    <button id="settings-button" class="btn btn-secondary" title="Spotify認証設定">
+                        <span class="btn-icon">⚙️</span>
+                        設定
+                    </button>
+                </div>
+            </header>
 
-        <input type="text" id="artist-input" placeholder="アーティスト名を入力">
-        <button id="add-button">登録</button>
-        <button id="check-all-button">新譜をまとめてチェック</button>
+            <main class="main">
+                <section class="add-artist-section">
+                    <div class="input-group">
+                        <input type="text" id="artist-input" placeholder="アーティスト名を入力" aria-label="アーティスト名">
+                        <button id="add-button" class="btn btn-primary">
+                            <span class="btn-icon">➕</span>
+                            登録
+                        </button>
+                    </div>
+                    <button id="check-all-button" class="btn btn-secondary btn-full">
+                        <span class="btn-icon">🔍</span>
+                        新譜をまとめてチェック
+                    </button>
+                </section>
 
-        <hr>
-        <h2>登録済みアーティスト</h2>
-        <ul id="artist-list"></ul>
+                <section class="artists-section">
+                    <h2 class="section-title">
+                        <div class="title-content">
+                            <span class="section-icon">👥</span>
+                            登録済みアーティスト
+                        </div>
+                        <span class="artist-count" id="artist-count">0人</span>
+                    </h2>
+                    <div class="artists-container">
+                        <ul id="artist-list" class="artist-list"></ul>
+                    </div>
+                </section>
 
-        <hr>
-        <h2>最新アルバム</h2>
-        <div id="album-list"></div>
+                <section class="albums-section">
+                    <h2 class="section-title">
+                        <span class="section-icon">💿</span>
+                        最新アルバム
+                    </h2>
+                    <div id="album-list" class="album-grid"></div>
+                </section>
+            </main>
+
+            <footer class="footer">
+                <p>&copy; 2024 マイアーティスト新譜情報</p>
+            </footer>
+        </div>
 
         <script src="script.js"></script>
     </body>

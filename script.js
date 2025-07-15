@@ -1,77 +1,158 @@
-// iTunes APIを使用（認証不要）
-const albumListDiv = document.querySelector('#album-list');
+// Spotifyの認証情報（ユーザー入力から設定）
+let spotifyClientId = '';
+let spotifyClientSecret = '';
+let accessToken = ''; // アクセストークンを保存する変数
 
-// 新しいボタンをscript.jsの上の方で取得しておく
+// モーダル要素
+const spotifyAuthModal = document.getElementById('spotify-auth-modal');
+const clientIdInput = document.getElementById('client-id-input');
+const clientSecretInput = document.getElementById('client-secret-input');
+const saveCredentialsButton = document.getElementById('save-credentials');
+const settingsButton = document.getElementById('settings-button');
+
+const albumListDiv = document.querySelector('#album-list');
 const checkAllButton = document.querySelector('#check-all-button');
+const artistCountElement = document.querySelector('#artist-count');
+
+async function getAccessToken() {
+    try {
+        const response = await fetch('https://accounts.spotify.com/api/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': 'Basic ' + btoa(spotifyClientId + ':' + spotifyClientSecret)
+            },
+            body: 'grant_type=client_credentials'
+        });
+
+        const data = await response.json();
+        console.log('取得したアクセストークン:', data.access_token);
+        accessToken = data.access_token;
+    } catch (error) {
+        console.error('アクセストークンの取得に失敗しました:', error);
+    }
+}
 
 // アーティストを検索して「アーティストID」を返す関数
 async function searchArtist(artistName) {
-  try {
-    console.log('検索ワード:', artistName);
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=artist&limit=1`;
-    console.log('iTunes APIリクエストURL:', url);
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    console.log('iTunes APIレスポンス:', data);
+    if (!accessToken) return null;
 
-    if (data.results && data.results.length > 0) {
-      return data.results[0].artistId;
-    } else {
-      return null;
+    try {
+        const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(artistName)}&type=artist&limit=1`, {
+            headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        const data = await response.json();
+
+        if (data.artists.items.length > 0) {
+            return data.artists.items[0].id;
+        } else {
+            return null;
+        }
+    } catch (error) {
+        console.error('アーティスト検索に失敗しました:', error);
+        return null;
     }
-  } catch (error) {
-    console.error('アーティスト検索でエラー:', error);
-    throw error;
-  }
 }
 
 // アーティストIDを使って「アルバムのリスト」を返す関数
 async function getArtistAlbums(artistId) {
-  if (!artistId) return []; // IDがなければ空の配列を返す
+    if (!accessToken || !artistId) return [];
 
-  try {
-    console.log('アルバム取得中、アーティストID:', artistId);
-    const response = await fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=50`);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+        const response = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?market=JP&limit=50`, {
+            headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        const data = await response.json();
+        return data.items || [];
+    } catch (error) {
+        console.error('アルバム取得に失敗しました:', error);
+        return [];
     }
-    
-    const data = await response.json();
-    console.log('アルバム取得レスポンス:', data);
-    
-    // iTunes APIのレスポンス形式に合わせて処理
-    if (data.results && data.results.length > 1) {
-      // 最初の要素はアーティスト情報なので除外し、アルバムのみを返す
-      return data.results.slice(1);
-    }
-    return [];
-  } catch (error) {
-    console.error('アルバム取得でエラー:', error);
-    throw error;
-  }
+}
+
+// ローディング状態を表示する関数
+function showLoading() {
+    albumListDiv.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <span>チェック中...</span>
+        </div>
+    `;
+}
+
+// エラー状態を表示する関数
+function showError(message) {
+    albumListDiv.innerHTML = `
+        <div class="empty-state">
+            <p>❌ ${message}</p>
+        </div>
+    `;
+}
+
+// 空の状態を表示する関数
+function showEmpty() {
+    albumListDiv.innerHTML = `
+        <div class="empty-state">
+            <p>📭 過去1ヶ月の新譜は見つかりませんでした。</p>
+        </div>
+    `;
 }
 
 // 「アルバムのリスト」を受け取って画面に表示する関数
 function displayAlbums(albums) {
-  albumListDiv.innerHTML = ''; // まずは表示エリアを空っぽにする
+    if (!albums || albums.length === 0) {
+        showEmpty();
+        return;
+    }
 
-  for (const album of albums) {
-    const albumInfo = document.createElement('p');
-    // iTunes APIのレスポンス形式に合わせて表示
-    const releaseDate = new Date(album.releaseDate).toLocaleDateString('ja-JP');
-    albumInfo.textContent = `💿 ${album.collectionName} / ${album.artistName} (${releaseDate})`;
+    albumListDiv.innerHTML = '';
 
-    const albumImage = document.createElement('img');
-    albumImage.src = album.artworkUrl100.replace('100x100', '200x200'); // 画像サイズを大きくする
-    albumImage.width = 200;
+    albums.forEach(album => {
+        const albumCard = document.createElement('div');
+        albumCard.className = 'album-card';
 
-    albumListDiv.appendChild(albumImage);
-    albumListDiv.appendChild(albumInfo);
-  }
+        const albumImage = document.createElement('img');
+        albumImage.className = 'album-image';
+        albumImage.src = album.images[0]?.url || '';
+        albumImage.alt = `${album.name} のアルバムカバー`;
+        albumImage.onerror = function() {
+            this.style.display = 'none';
+        };
+
+        const albumInfo = document.createElement('div');
+        albumInfo.className = 'album-info';
+
+        const albumTitle = document.createElement('div');
+        albumTitle.className = 'album-title';
+        albumTitle.textContent = album.name;
+
+        const albumArtist = document.createElement('div');
+        albumArtist.className = 'album-artist';
+        albumArtist.textContent = album.artists[0].name;
+
+        const albumDate = document.createElement('div');
+        albumDate.className = 'album-date';
+        albumDate.textContent = formatDate(album.release_date);
+
+        albumInfo.appendChild(albumTitle);
+        albumInfo.appendChild(albumArtist);
+        albumInfo.appendChild(albumDate);
+
+        albumCard.appendChild(albumImage);
+        albumCard.appendChild(albumInfo);
+
+        albumListDiv.appendChild(albumCard);
+    });
+}
+
+// 日付をフォーマットする関数
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
 }
 
 // HTMLの要素を取得して、変数に入れる
@@ -79,113 +160,220 @@ const input = document.querySelector('#artist-input');
 const button = document.querySelector('#add-button');
 const artistList = document.querySelector('#artist-list');
 
-// Apple MusicアーティストURLからIDを抽出する関数
-function extractArtistIdFromUrl(url) {
-  // 例: https://music.apple.com/jp/artist/インナージャーニー/1500537939
-  const match = url.match(/artist\/[^/]+\/(\d+)/);
-  return match ? match[1] : null;
-}
-
-// artists配列の構造を { id, name } のオブジェクト配列に変更
+// artistsという配列を用意。localStorageにあればそれを、なければ空の配列を使う
 const artists = JSON.parse(localStorage.getItem('artists')) || [];
+
+// アーティストカウンターを更新する関数
+function updateArtistCount() {
+    artistCountElement.textContent = `${artists.length}人`;
+}
 
 // 最初にlocalStorageのデータからリストを復元する関数
 function renderArtists() {
     artistList.innerHTML = '';
-    for (const artist of artists) {
+    
+    if (artists.length === 0) {
+        artistList.innerHTML = `
+            <div class="empty-state">
+                <p>📝 アーティストを登録してください</p>
+            </div>
+        `;
+        updateArtistCount();
+        return;
+    }
+
+    artists.forEach(artist => {
         const li = document.createElement('li');
-        li.textContent = `${artist.name}（ID: ${artist.id}）`;
+        li.className = 'artist-item';
+
+        const artistName = document.createElement('span');
+        artistName.className = 'artist-name';
+        artistName.textContent = artist;
 
         const deleteButton = document.createElement('button');
+        deleteButton.className = 'btn btn-danger';
         deleteButton.textContent = '削除';
+
         deleteButton.addEventListener('click', () => {
-            const idx = artists.findIndex(a => a.id === artist.id);
-            if (idx !== -1) {
-                artists.splice(idx, 1);
-                saveArtists();
-                renderArtists();
-            }
+            artists.splice(artists.indexOf(artist), 1);
+            saveArtists();
+            renderArtists();
         });
+
+        li.appendChild(artistName);
         li.appendChild(deleteButton);
         artistList.appendChild(li);
-    }
+    });
+    
+    updateArtistCount();
 }
 
+// データをlocalStorageに保存する機能
 function saveArtists() {
     localStorage.setItem('artists', JSON.stringify(artists));
 }
 
-// Apple MusicアーティストURLから登録する処理
+// ボタンがクリックされた時の処理
 button.addEventListener('click', async () => {
-  const inputValue = input.value.trim();
-  if (inputValue === '') return;
+    if (input.value.trim() === '') return;
 
-  const artistId = extractArtistIdFromUrl(inputValue);
-  if (!artistId) {
-    albumListDiv.innerHTML = '<p>Apple MusicのアーティストURLを入力してください。</p>';
-    return;
-  }
-
-  // すでに登録済みかチェック
-  if (artists.some(a => a.id === artistId)) {
-    albumListDiv.innerHTML = '<p>このアーティストはすでに登録されています。</p>';
-    return;
-  }
-
-  try {
-    // アーティスト情報取得
-    const response = await fetch(`https://itunes.apple.com/lookup?id=${artistId}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    if (!data.results || data.results.length === 0) {
-      albumListDiv.innerHTML = '<p>アーティスト情報が取得できませんでした。</p>';
-      return;
+    const artistName = input.value.trim();
+    
+    // 既に登録されているかチェック
+    if (artists.includes(artistName)) {
+        showError(`${artistName} は既に登録されています。`);
+        return;
     }
-    const artistName = data.results[0].artistName;
-    // artists配列に追加
-    artists.push({ id: artistId, name: artistName });
-    saveArtists();
-    renderArtists();
-    albumListDiv.innerHTML = `<p>${artistName} を登録しました。</p>`;
-    input.value = '';
-  } catch (error) {
-    albumListDiv.innerHTML = `<p>エラーが発生しました: ${error.message}</p>`;
-  }
+
+    showLoading();
+
+    try {
+        const artistId = await searchArtist(artistName);
+        if (artistId) {
+            const albums = await getArtistAlbums(artistId);
+            displayAlbums(albums);
+        } else {
+            showError(`${artistName} は見つかりませんでした。`);
+            return;
+        }
+
+        artists.push(artistName);
+        saveArtists();
+        renderArtists();
+        input.value = '';
+    } catch (error) {
+        console.error('エラーが発生しました:', error);
+        showError('エラーが発生しました。もう一度お試しください。');
+    }
+});
+
+// Enterキーでも登録できるようにする
+input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        button.click();
+    }
 });
 
 // 登録済みアーティスト全員の新譜をチェックするメインの関数
 async function checkAllNewReleases() {
-  albumListDiv.innerHTML = '<p>チェック中...</p>';
-  let allAlbums = [];
-  for (const artist of artists) {
+    if (artists.length === 0) {
+        showError('登録されているアーティストがいません。');
+        return;
+    }
+
+    console.log('新譜のチェックを開始します...');
+    showLoading();
+
     try {
-      const response = await fetch(`https://itunes.apple.com/lookup?id=${artist.id}&entity=album&limit=50`);
-      if (!response.ok) continue;
-      const data = await response.json();
-      if (data.results && data.results.length > 1) {
-        allAlbums = allAlbums.concat(data.results.slice(1));
-      }
-    } catch (e) {}
-  }
-  const oneMonthAgo = new Date();
-  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-  const recentAlbums = allAlbums.filter(album => new Date(album.releaseDate) >= oneMonthAgo);
-  const uniqueAlbums = [...new Map(recentAlbums.map(item => [item['collectionId'], item])).values()];
-  const sortedAlbums = uniqueAlbums.sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate));
-  displayAlbums(sortedAlbums);
-  if (sortedAlbums.length === 0) {
-    albumListDiv.innerHTML = '<p>過去1ヶ月の新譜は見つかりませんでした。</p>';
-  }
+        let allAlbums = [];
+
+        // 1. 登録済みのアーティストを一人ずつ処理
+        for (const artistName of artists) {
+            const artistId = await searchArtist(artistName);
+            if (artistId) {
+                const albums = await getArtistAlbums(artistId);
+                allAlbums = allAlbums.concat(albums);
+            }
+        }
+
+        // 2. 過去1ヶ月以内にリリースされたものだけに絞り込む
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+        const recentAlbums = allAlbums.filter(album => {
+            return album.release_date_precision === 'day' && new Date(album.release_date) >= oneMonthAgo;
+        });
+
+        // 3. 重複しているアルバムを削除する
+        const uniqueAlbums = [...new Map(recentAlbums.map(item => [item['id'], item])).values()];
+        
+        // 4. リリース日が新しい順に並び替える
+        const sortedAlbums = uniqueAlbums.sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
+
+        console.log('最終的なアルバムリスト:', sortedAlbums);
+        displayAlbums(sortedAlbums);
+    } catch (error) {
+        console.error('新譜チェック中にエラーが発生しました:', error);
+        showError('新譜のチェック中にエラーが発生しました。もう一度お試しください。');
+    }
 }
 
-// displayAlbums関数はそのまま利用
-// Enterキーでも登録できるようにする
-input.addEventListener('keypress', (event) => {
-  if (event.key === 'Enter') {
-    button.click();
-  }
+// モーダル関連の機能
+function showSpotifyAuthModal() {
+    spotifyAuthModal.classList.add('show');
+    clientIdInput.focus();
+}
+
+function hideSpotifyAuthModal() {
+    spotifyAuthModal.classList.remove('show');
+}
+
+function saveSpotifyCredentials() {
+    const clientId = clientIdInput.value.trim();
+    const clientSecret = clientSecretInput.value.trim();
+    
+    if (!clientId || !clientSecret) {
+        alert('Client IDとClient Secretを両方入力してください。');
+        return;
+    }
+    
+    spotifyClientId = clientId;
+    spotifyClientSecret = clientSecret;
+    
+    // 認証情報をlocalStorageに保存（オプション）
+    localStorage.setItem('spotifyClientId', clientId);
+    localStorage.setItem('spotifyClientSecret', clientSecret);
+    
+    hideSpotifyAuthModal();
+    
+    // アクセストークンを取得
+    getAccessToken();
+}
+
+// 保存ボタンのイベントリスナー
+saveCredentialsButton.addEventListener('click', saveSpotifyCredentials);
+
+// 設定ボタンのイベントリスナー
+settingsButton.addEventListener('click', () => {
+    // 現在の認証情報を入力フィールドに設定
+    clientIdInput.value = spotifyClientId;
+    clientSecretInput.value = spotifyClientSecret;
+    showSpotifyAuthModal();
 });
 
-// 初期化
-renderArtists();
+// Enterキーでも保存できるようにする
+clientIdInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        clientSecretInput.focus();
+    }
+});
+
+clientSecretInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        saveSpotifyCredentials();
+    }
+});
+
+// ページ読み込み時の処理
+function initializeApp() {
+    // 保存された認証情報があるかチェック
+    const savedClientId = localStorage.getItem('spotifyClientId');
+    const savedClientSecret = localStorage.getItem('spotifyClientSecret');
+    
+    if (savedClientId && savedClientSecret) {
+        spotifyClientId = savedClientId;
+        spotifyClientSecret = savedClientSecret;
+        getAccessToken();
+    } else {
+        // 認証情報がない場合はモーダルを表示
+        showSpotifyAuthModal();
+    }
+    
+    // 画面を描画
+    renderArtists();
+}
+
+// 最初に画面を描画
+initializeApp();
+
 checkAllButton.addEventListener('click', checkAllNewReleases);
